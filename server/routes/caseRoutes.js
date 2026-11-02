@@ -23,7 +23,7 @@ const config = {
 // GENERATE MYSTERY USING GEMINI AI
 async function generateMystery(premise, difficulty) {
   if (!genAI) {
-    throw new Error("Gemini API key is missing in server/.env");
+    throw new Error("Gemini API key is missing in Render environment variables.");
   }
 
   const counts = config[difficulty];
@@ -32,7 +32,6 @@ async function generateMystery(premise, difficulty) {
 You are an expert mystery game creator.
 
 Create an original detective mystery based on:
-
 ${premise}
 
 Difficulty: ${difficulty}
@@ -44,22 +43,21 @@ Generate exactly:
 
 Rules:
 1. The story must have one definite culprit.
-2. Every suspect must have a name, description and occupation.
-3. Every clue must have a title and description.
+2. Every suspect must have name, description and occupation.
+3. Every clue must have title and description.
 4. Clues must logically help identify the culprit.
-5. Hints should guide without directly revealing the culprit.
+5. Hints should guide without revealing the culprit.
 6. The culprit must be one of the suspects.
 7. Keep the mystery logical and consistent.
 8. Do not reveal the culprit in the story or clues.
 
-Return ONLY valid JSON:
-
+Return only valid JSON with this structure:
 {
   "story": "Complete mystery story",
   "suspects": [
     {
       "name": "Suspect name",
-      "description": "Suspect background and possible motive",
+      "description": "Suspect background and motive",
       "occupation": "Occupation"
     }
   ],
@@ -69,15 +67,14 @@ Return ONLY valid JSON:
       "description": "Clue details"
     }
   ],
-  "hints": [
-    "Helpful hint"
-  ],
+  "hints": ["Helpful hint"],
   "culprit": "Exact name of culprit"
 }
 `;
 
+  // MODEL NAME IS HERE
   const response = await genAI.models.generateContent({
-    model: "gemini-3.8-flash",
+    model: "gemini-3.5-flash",
     contents: prompt,
     config: {
       responseMimeType: "application/json"
@@ -87,7 +84,7 @@ Return ONLY valid JSON:
   const rawText = response.text;
 
   if (!rawText) {
-    throw new Error("Gemini returned an empty response");
+    throw new Error("Gemini returned an empty response.");
   }
 
   const data = JSON.parse(rawText);
@@ -99,7 +96,7 @@ Return ONLY valid JSON:
     !Array.isArray(data.hints) ||
     !data.suspects.some(s => s.name === data.culprit)
   ) {
-    throw new Error("Gemini generated invalid mystery data");
+    throw new Error("Gemini generated invalid mystery data.");
   }
 
   if (
@@ -107,9 +104,7 @@ Return ONLY valid JSON:
     data.clues.length !== counts.clues ||
     data.hints.length !== counts.hints
   ) {
-    throw new Error(
-      "Gemini generated incorrect numbers of suspects, clues or hints. Please try again."
-    );
+    throw new Error("Gemini generated incorrect numbers. Please try again.");
   }
 
   return data;
@@ -136,25 +131,16 @@ router.post("/", async (req, res) => {
 
     const aiData = await generateMystery(premise, difficulty);
 
-    const suspects = aiData.suspects.map(suspect => ({
-      name: suspect.name,
-      description: suspect.description,
-      occupation: suspect.occupation
-    }));
-
-    const clues = aiData.clues.map(clue => ({
-      title: clue.title,
-      description: clue.description,
-      discovered: false
-    }));
-
     const newCase = await Case.create({
       title,
       premise,
       difficulty,
       story: aiData.story,
-      suspects,
-      clues,
+      suspects: aiData.suspects,
+      clues: aiData.clues.map(clue => ({
+        ...clue,
+        discovered: false
+      })),
       culprit: aiData.culprit,
       hints: aiData.hints
     });
@@ -174,8 +160,7 @@ router.post("/", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("AI Case Generation Error:", error.message);
-
+    console.error("AI Case Generation Error:", error);
     res.status(500).json({
       success: false,
       message: error.message || "Failed to generate mystery"
@@ -187,13 +172,9 @@ router.post("/", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const cases = await Case.find().select("-culprit -hints");
-
     res.json({ success: true, cases });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -212,10 +193,7 @@ router.get("/:id", async (req, res) => {
 
     res.json({ success: true, case: mysteryCase });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -225,26 +203,17 @@ router.post("/:id/clues/:clueId/discover", async (req, res) => {
     const mysteryCase = await Case.findById(req.params.id);
 
     if (!mysteryCase) {
-      return res.status(404).json({
-        success: false,
-        message: "Case not found"
-      });
+      return res.status(404).json({ success: false, message: "Case not found" });
     }
 
     if (mysteryCase.isCompleted) {
-      return res.status(400).json({
-        success: false,
-        message: "Case is already completed"
-      });
+      return res.status(400).json({ success: false, message: "Case is already completed" });
     }
 
     const clue = mysteryCase.clues.id(req.params.clueId);
 
     if (!clue) {
-      return res.status(404).json({
-        success: false,
-        message: "Clue not found"
-      });
+      return res.status(404).json({ success: false, message: "Clue not found" });
     }
 
     if (!clue.discovered) {
@@ -260,10 +229,7 @@ router.post("/:id/clues/:clueId/discover", async (req, res) => {
       discoveredClues: mysteryCase.discoveredClues
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -274,29 +240,19 @@ router.post("/:id/hints", async (req, res) => {
       .select("+culprit +hints");
 
     if (!mysteryCase) {
-      return res.status(404).json({
-        success: false,
-        message: "Case not found"
-      });
+      return res.status(404).json({ success: false, message: "Case not found" });
     }
 
     if (mysteryCase.isCompleted) {
-      return res.status(400).json({
-        success: false,
-        message: "Case is already completed"
-      });
+      return res.status(400).json({ success: false, message: "Case is already completed" });
     }
 
     if (mysteryCase.hintsUsed >= mysteryCase.hints.length) {
-      return res.status(400).json({
-        success: false,
-        message: "No hints remaining"
-      });
+      return res.status(400).json({ success: false, message: "No hints remaining" });
     }
 
     const hint = mysteryCase.hints[mysteryCase.hintsUsed];
     mysteryCase.hintsUsed += 1;
-
     await mysteryCase.save();
 
     res.json({
@@ -306,10 +262,7 @@ router.post("/:id/hints", async (req, res) => {
       remainingHints: mysteryCase.hints.length - mysteryCase.hintsUsed
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -329,17 +282,11 @@ router.post("/:id/accuse", async (req, res) => {
       .select("+culprit +hints");
 
     if (!mysteryCase) {
-      return res.status(404).json({
-        success: false,
-        message: "Case not found"
-      });
+      return res.status(404).json({ success: false, message: "Case not found" });
     }
 
     if (mysteryCase.isCompleted) {
-      return res.status(400).json({
-        success: false,
-        message: "Case is already completed"
-      });
+      return res.status(400).json({ success: false, message: "Case is already completed" });
     }
 
     const suspectExists = mysteryCase.suspects.some(
@@ -347,10 +294,7 @@ router.post("/:id/accuse", async (req, res) => {
     );
 
     if (!suspectExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid suspect"
-      });
+      return res.status(400).json({ success: false, message: "Invalid suspect" });
     }
 
     const isCorrect = suspectName === mysteryCase.culprit;
@@ -368,7 +312,6 @@ router.post("/:id/accuse", async (req, res) => {
     mysteryCase.accusedSuspect = suspectName;
     mysteryCase.isCompleted = true;
     mysteryCase.score = finalScore;
-
     await mysteryCase.save();
 
     res.json({
@@ -379,12 +322,8 @@ router.post("/:id/accuse", async (req, res) => {
         ? "Correct! You solved the mystery."
         : "Incorrect accusation. Mystery failed."
     });
-
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -395,10 +334,7 @@ router.get("/:id/result", async (req, res) => {
       .select("+culprit");
 
     if (!mysteryCase) {
-      return res.status(404).json({
-        success: false,
-        message: "Case not found"
-      });
+      return res.status(404).json({ success: false, message: "Case not found" });
     }
 
     if (!mysteryCase.isCompleted) {
@@ -419,12 +355,8 @@ router.get("/:id/result", async (req, res) => {
       discoveredClues: mysteryCase.discoveredClues,
       hintsUsed: mysteryCase.hintsUsed
     });
-
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

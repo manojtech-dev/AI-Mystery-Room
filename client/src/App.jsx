@@ -2,9 +2,12 @@
 import { useState } from "react";
 import "./App.css";
 
-const API_URL = "http://localhost:5000/api/cases";
+// Deployed Render Backend URL
+const API_URL = "https://ai-mystery-room-wdqh.onrender.com/api/cases";
 
-const Icon = ({ children }) => <span className="icon">{children}</span>;
+const Icon = ({ children }) => (
+  <span className="icon">{children}</span>
+);
 
 export default function App() {
   const [page, setPage] = useState("home");
@@ -18,24 +21,42 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Common API request function
   const apiRequest = async (url, options = {}) => {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
+    let response;
 
-    const data = await response.json();
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers,
+        },
+      });
+    } catch {
+      throw new Error(
+        "Unable to connect to the server. Please try again."
+      );
+    }
+
+    let data;
+
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error("Invalid server response. Please try again.");
+    }
 
     if (!response.ok || !data.success) {
-      throw new Error(data.message || "Something went wrong");
+      throw new Error(
+        data.message || `Server error: ${response.status}`
+      );
     }
 
     return data;
   };
 
+  // Start a new mystery
   const startGame = async () => {
     if (!premise.trim()) {
       setMessage("Please enter a mystery premise.");
@@ -51,11 +72,17 @@ export default function App() {
         body: JSON.stringify({
           title: "The Mystery Investigation",
           premise: premise.trim(),
-          difficulty
-        })
+          difficulty,
+        }),
       });
 
-      const newCase = await apiRequest(`${API_URL}/${data.case.id}`);
+      if (!data.case?.id) {
+        throw new Error("The server did not return a valid case ID.");
+      }
+
+      const newCase = await apiRequest(
+        `${API_URL}/${data.case.id}`
+      );
 
       setCaseData(newCase.case);
       setDiscovered([]);
@@ -71,6 +98,7 @@ export default function App() {
     }
   };
 
+  // Discover a clue
   const discoverClue = async (index) => {
     if (discovered.includes(index)) {
       setMessage("You have already discovered this clue.");
@@ -85,13 +113,14 @@ export default function App() {
         { method: "POST" }
       );
 
-      setDiscovered(previous => [...previous, index]);
+      setDiscovered((previous) => [...previous, index]);
       setMessage(data.message);
     } catch (error) {
       setMessage(error.message);
     }
   };
 
+  // Request a hint
   const requestHint = async () => {
     try {
       const data = await apiRequest(
@@ -106,15 +135,17 @@ export default function App() {
     }
   };
 
+  // Make an accusation
   const makeAccusation = async (suspectName) => {
     setLoading(true);
+    setMessage("");
 
     try {
       const data = await apiRequest(
         `${API_URL}/${caseData._id}/accuse`,
         {
           method: "POST",
-          body: JSON.stringify({ suspectName })
+          body: JSON.stringify({ suspectName }),
         }
       );
 
@@ -123,10 +154,11 @@ export default function App() {
       );
 
       setAccusation(suspectName);
+
       setResult({
         ...finalResult,
         correct: data.correct,
-        score: data.score
+        score: data.score,
       });
 
       setPage("result");
@@ -146,71 +178,113 @@ export default function App() {
 
   return (
     <div className="app">
+
       <nav className="navbar">
         <div className="brand">
           <Icon>◎</Icon> MYSTERY<span>ROOM</span>
         </div>
-        <div className="nav-label">DETECTIVE INTELLIGENCE SYSTEM</div>
+        <div className="nav-label">
+          DETECTIVE INTELLIGENCE SYSTEM
+        </div>
       </nav>
 
       {page === "home" && (
         <section className="hero">
           <div className="eyebrow">◇ CASE FILES ARE WAITING</div>
-          <h1>Every Mystery Has<br /><span>A Hidden Truth.</span></h1>
+
+          <h1>
+            Every Mystery Has<br />
+            <span>A Hidden Truth.</span>
+          </h1>
+
           <p>
-            Enter a world of secrets, investigate evidence, question suspects,
-            and uncover the truth. Your detective journey starts here.
+            Enter a world of secrets, investigate evidence, question
+            suspects, and uncover the truth. Your detective journey
+            starts here.
           </p>
 
-          <button className="primary" onClick={() => {
-            setMessage("");
-            setPage("create");
-          }}>
+          <button
+            className="primary"
+            onClick={() => {
+              setMessage("");
+              setPage("create");
+            }}
+          >
             ▶ Start Investigation
           </button>
 
           <div className="stats">
-            <div><strong>03</strong><small>DIFFICULTIES</small></div>
-            <div><strong>AI</strong><small>MYSTERY ENGINE</small></div>
-            <div><strong>∞</strong><small>POSSIBILITIES</small></div>
+            <div>
+              <strong>03</strong>
+              <small>DIFFICULTIES</small>
+            </div>
+            <div>
+              <strong>AI</strong>
+              <small>MYSTERY ENGINE</small>
+            </div>
+            <div>
+              <strong>∞</strong>
+              <small>POSSIBILITIES</small>
+            </div>
           </div>
         </section>
       )}
 
       {page === "create" && (
         <section className="panel">
-          <button className="back" onClick={() => setPage("home")}>← Back</button>
+          <button
+            className="back"
+            onClick={() => setPage("home")}
+          >
+            ← Back
+          </button>
+
           <div className="eyebrow">NEW CASE</div>
           <h1>Create Your Mystery</h1>
-          <p>Choose your investigation difficulty and enter a mystery premise.</p>
+
+          <p>
+            Choose your investigation difficulty and enter a mystery premise.
+          </p>
 
           <div className="difficulty">
-            {["Easy", "Medium", "Hard"].map(level => (
+            {["Easy", "Medium", "Hard"].map((level) => (
               <button
                 key={level}
-                className={difficulty === level ? "level selected" : "level"}
+                className={
+                  difficulty === level
+                    ? "level selected"
+                    : "level"
+                }
                 onClick={() => setDifficulty(level)}
               >
                 {level}
+
                 <small>
-                  {level === "Easy" ? "3 Suspects · 5 Clues · 2 Hints" :
-                    level === "Medium" ? "4 Suspects · 7 Clues · 3 Hints" :
-                    "5 Suspects · 9 Clues · 3 Hints"}
+                  {level === "Easy"
+                    ? "3 Suspects · 5 Clues · 2 Hints"
+                    : level === "Medium"
+                    ? "4 Suspects · 7 Clues · 3 Hints"
+                    : "5 Suspects · 9 Clues · 3 Hints"}
                 </small>
               </button>
             ))}
           </div>
 
           <label>MYSTERY PREMISE</label>
+
           <textarea
             value={premise}
-            onChange={e => setPremise(e.target.value)}
+            onChange={(e) => setPremise(e.target.value)}
             placeholder="Example: A priceless painting disappears from a museum..."
           />
 
           {message && <div className="notice">{message}</div>}
 
-          <button className="primary" onClick={startGame} disabled={loading}>
+          <button
+            className="primary"
+            onClick={startGame}
+            disabled={loading}
+          >
             {loading ? "Generating..." : "✦ Generate Mystery"}
           </button>
 
@@ -222,7 +296,13 @@ export default function App() {
 
       {page === "game" && caseData && (
         <section className="panel wide">
-          <button className="back" onClick={() => setPage("create")}>← New Case</button>
+          <button
+            className="back"
+            onClick={() => setPage("create")}
+          >
+            ← New Case
+          </button>
+
           <div className="eyebrow">
             ACTIVE INVESTIGATION · {caseData.difficulty.toUpperCase()}
           </div>
@@ -232,39 +312,60 @@ export default function App() {
 
           <div className="progress">
             Evidence discovered: {discovered.length} / {caseData.clues.length}
+
             <div className="progress-track">
-              <div style={{
-                width: `${discovered.length / caseData.clues.length * 100}%`
-              }} />
+              <div
+                style={{
+                  width: `${
+                    (discovered.length / caseData.clues.length) * 100
+                  }%`,
+                }}
+              />
             </div>
           </div>
 
           <h2>◈ Evidence Board</h2>
+
           <div className="clues">
             {caseData.clues.map((clue, index) => (
               <button
                 key={clue._id}
-                className={discovered.includes(index) ? "clue found" : "clue"}
+                className={
+                  discovered.includes(index)
+                    ? "clue found"
+                    : "clue"
+                }
                 onClick={() => discoverClue(index)}
               >
-                <strong>CLUE #{String(index + 1).padStart(2, "0")}</strong>
+                <strong>
+                  CLUE #{String(index + 1).padStart(2, "0")}
+                </strong>
+
                 <span>
                   {discovered.includes(index)
                     ? `${clue.title}: ${clue.description}`
                     : "Click to investigate this evidence"}
                 </span>
+
                 <small>
-                  {discovered.includes(index) ? "✓ DISCOVERED" : "◉ UNDISCOVERED"}
+                  {discovered.includes(index)
+                    ? "✓ DISCOVERED"
+                    : "◉ UNDISCOVERED"}
                 </small>
               </button>
             ))}
           </div>
 
           <h2>♙ Suspects</h2>
+
           <div className="suspects">
             {caseData.suspects.map((suspect, index) => (
-              <div className="suspect" key={suspect._id || index}>
+              <div
+                className="suspect"
+                key={suspect._id || index}
+              >
                 <div className="suspect-avatar">♙</div>
+
                 <div>
                   <strong>{suspect.name}</strong>
                   <small>{suspect.occupation}</small>
@@ -275,13 +376,20 @@ export default function App() {
           </div>
 
           <div className="actions">
-            <button className="secondary" onClick={requestHint}>
+            <button
+              className="secondary"
+              onClick={requestHint}
+            >
               💡 Request Hint ({hintsUsed})
             </button>
-            <button className="primary" onClick={() => {
-              setMessage("");
-              setPage("accuse");
-            }}>
+
+            <button
+              className="primary"
+              onClick={() => {
+                setMessage("");
+                setPage("accuse");
+              }}
+            >
               Make Accusation →
             </button>
           </div>
@@ -292,15 +400,22 @@ export default function App() {
 
       {page === "accuse" && caseData && (
         <section className="panel">
-          <button className="back" onClick={() => setPage("game")}>
+          <button
+            className="back"
+            onClick={() => setPage("game")}
+          >
             ← Back to Evidence
           </button>
 
           <div className="eyebrow">FINAL DECISION</div>
-          <h1>Who is the Culprit?</h1>
-          <p>Study your evidence and select the person responsible.</p>
 
-          {caseData.suspects.map(suspect => (
+          <h1>Who is the Culprit?</h1>
+
+          <p>
+            Study your evidence and select the person responsible.
+          </p>
+
+          {caseData.suspects.map((suspect) => (
             <button
               className="suspect-choice"
               key={suspect._id}
@@ -312,6 +427,7 @@ export default function App() {
           ))}
 
           {loading && <p>Checking your accusation...</p>}
+
           {message && <div className="notice">{message}</div>}
         </section>
       )}
@@ -319,17 +435,26 @@ export default function App() {
       {page === "result" && caseData && result && (
         <section className="panel result">
           <div className="eyebrow">CASE CLOSED</div>
-          <div className="result-icon">{correct ? "🏆" : "✕"}</div>
-          <h1>{correct ? "Mystery Solved!" : "Wrong Accusation"}</h1>
+
+          <div className="result-icon">
+            {correct ? "🏆" : "✕"}
+          </div>
+
+          <h1>
+            {correct ? "Mystery Solved!" : "Wrong Accusation"}
+          </h1>
+
           <h2>{score} POINTS</h2>
 
           <p>Your accusation: {accusation}</p>
+
           <p>
             Actual culprit: <strong>{result.culprit}</strong>
           </p>
 
           <div className="solution">
             <strong>THE TRUTH</strong>
+
             <p>
               {correct
                 ? "Congratulations! You successfully solved the mystery."
@@ -338,25 +463,46 @@ export default function App() {
           </div>
 
           <div className="score-breakdown">
-            <div><span>Base score</span><strong>{base}</strong></div>
-            <div><span>Clues discovered</span><strong>+{result.discoveredClues * 5}</strong></div>
-            <div><span>Hints used</span><strong>-{result.hintsUsed * 10}</strong></div>
-            <div><span>Final score</span><strong>{score}</strong></div>
+            <div>
+              <span>Base score</span>
+              <strong>{base}</strong>
+            </div>
+
+            <div>
+              <span>Clues discovered</span>
+              <strong>+{result.discoveredClues * 5}</strong>
+            </div>
+
+            <div>
+              <span>Hints used</span>
+              <strong>-{result.hintsUsed * 10}</strong>
+            </div>
+
+            <div>
+              <span>Final score</span>
+              <strong>{score}</strong>
+            </div>
           </div>
 
-          <button className="primary" onClick={() => {
-            setPremise("");
-            setMessage("");
-            setPage("create");
-          }}>
+          <button
+            className="primary"
+            onClick={() => {
+              setPremise("");
+              setMessage("");
+              setPage("create");
+            }}
+          >
             ▶ Play Again
           </button>
 
-          <button className="secondary home-button" onClick={() => {
-            setPremise("");
-            setMessage("");
-            setPage("home");
-          }}>
+          <button
+            className="secondary home-button"
+            onClick={() => {
+              setPremise("");
+              setMessage("");
+              setPage("home");
+            }}
+          >
             Return Home
           </button>
         </section>
